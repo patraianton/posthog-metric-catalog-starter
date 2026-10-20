@@ -1,0 +1,111 @@
+{
+  "company": "Brightdesk (a made-up shared-inbox app sold per seat). Replace everything in this file with your own.",
+  "views": [
+    {
+      "name": "catalog_accounts",
+      "file": "views/catalog_accounts.sql",
+      "description": "One row per customer account with its owner email (when the account has a Stripe customer) and is_internal = our own QA, test and staff accounts. Catalog metrics exclude is_internal accounts through this view; it is the one place that holds the test-account list."
+    }
+  ],
+  "metrics": [
+    {
+      "name": "new_paying_customers",
+      "display_name": "New paying customers (weekly)",
+      "unit": "accounts",
+      "description": "Accounts that paid their first-ever invoice in the week, Monday to Monday, UTC. A $0 invoice paid by coupon counts. Test and staff accounts are excluded.",
+      "definition": { "kind": "HogQLQuery", "file": "metrics/new_paying_customers.sql" },
+      "confidence": 0.9,
+      "reasoning": "Same rule as the weekly KPI report's new-customers column: first-ever paid invoice, half-open Monday week in UTC. Checked account by account against the report's own list for three weeks before proposing."
+    },
+    {
+      "name": "new_seats",
+      "display_name": "New seats (weekly)",
+      "unit": "seats",
+      "description": "Seats bought on each account's first subscription, counted in the week the subscription was created, Monday to Monday, UTC. Later upgrades and subscriptions that started as a free trial are not included. Test and staff accounts are excluded.",
+      "definition": { "kind": "HogQLQuery", "file": "metrics/new_seats.sql" },
+      "confidence": 0.9,
+      "reasoning": "The synced Stripe subscription row holds today's quantity, after upgrades, so seats come from the subscription's first invoice (billing_reason = subscription_create). Matches the weekly report for the weeks checked."
+    },
+    {
+      "name": "website_visitors",
+      "display_name": "Website visitors (weekly)",
+      "unit": "people",
+      "description": "Unique visitors of the marketing site in the week, Monday to Monday, UTC.",
+      "definition": { "kind": "HogQLQuery", "file": "metrics/website_visitors.sql" },
+      "confidence": 0.9,
+      "reasoning": "Written in SQL so the week starts on Monday; a Trends query follows the project's week, which starts on Sunday by default. Counted by pageview time, so it can differ from the Web analytics page by a few people."
+    },
+    {
+      "name": "hubspot_new_connections",
+      "display_name": "New HubSpot connections (weekly)",
+      "unit": "accounts",
+      "description": "Accounts that connected HubSpot for the first time ever in the week, Monday to Monday, UTC. Reconnects do not count. Test and staff accounts are excluded.",
+      "definition": { "kind": "HogQLQuery", "file": "metrics/hubspot_new_connections.sql" },
+      "confidence": 0.9,
+      "reasoning": "First-ever hubspot_connected per account. A connection is recreated on every reconnect, so counting events in the week would count reconnects."
+    },
+    {
+      "name": "zapier_new_connections",
+      "display_name": "New Zapier connections (weekly)",
+      "unit": "accounts",
+      "description": "Accounts that subscribed their first-ever Zapier trigger in the week, Monday to Monday, UTC. Later subscriptions by the same account do not count. Test and staff accounts are excluded.",
+      "definition": { "kind": "HogQLQuery", "file": "metrics/zapier_new_connections.sql" },
+      "confidence": 0.85,
+      "reasoning": "The team says 'Zapier connections' for two different numbers. This one is new connections; zapier_trigger_subscribers is activity. Two honest names instead of one contested metric."
+    },
+    {
+      "name": "zapier_trigger_subscribers",
+      "display_name": "People subscribing Zapier triggers (weekly)",
+      "unit": "people",
+      "description": "People who subscribed a Zapier trigger in the week, Monday to Monday, UTC, repeat subscriptions included. Test and staff accounts are excluded.",
+      "definition": { "kind": "HogQLQuery", "file": "metrics/zapier_trigger_subscribers.sql" },
+      "confidence": 0.85,
+      "reasoning": "The activity meaning of 'Zapier connections', kept under its own name so that a question about new connections does not land here."
+    },
+    {
+      "name": "signups",
+      "display_name": "Signups (weekly)",
+      "unit": "accounts",
+      "description": "New accounts created in the week, Monday to Monday, UTC. Test and staff accounts are excluded.",
+      "definition": { "kind": "MarkdownDefinition", "file": "metrics/signups.md" },
+      "confidence": 0.8,
+      "reasoning": "The app database is not synced into PostHog, so this entry tells the agent where the canonical number is. The signed_up event runs a few percent below it."
+    },
+    {
+      "name": "mailbox_connections",
+      "display_name": "Mailboxes connected (weekly)",
+      "unit": "accounts",
+      "description": "Accounts that connected a mailbox for the first time ever in the week, Monday to Monday, UTC. Reconnects do not count. Test and staff accounts are excluded.",
+      "definition": { "kind": "MarkdownDefinition", "file": "metrics/mailbox_connections.md" },
+      "confidence": 0.8,
+      "reasoning": "Computed from the app database. The mailbox_connected event misses several ways of connecting and runs well below the report, so the steps forbid it."
+    }
+  ],
+  "certifications": [
+    { "view_name": "catalog_accounts", "proposed_status": "certified",
+      "notes": "Use for every customer or account count: is_internal = 1 marks QA, test and staff accounts. The one place that holds the test-account list; add a new test account here, not in a metric." },
+    { "table_name": "stripe.invoice", "proposed_status": "certified",
+      "notes": "Source for paid-customer counts. The paid date is status_transitions.paid_at (created_at only when paid_at is empty). Seats at purchase: lines of the invoice with billing_reason = subscription_create." },
+    { "table_name": "stripe.customer", "proposed_status": "certified",
+      "notes": "metadata.account_id is the account. A customer without account_id is not a product account (partner or manual invoice). One customer is one account." },
+    { "table_name": "stripe.subscription", "proposed_status": "certified",
+      "notes": "quantity is today's seat count, after any upgrade, and status is today's status. For seats at purchase read the subscription's first invoice in stripe.invoice." }
+  ],
+  "relationships": [
+    { "source_table_name": "stripe.invoice", "source_table_key": "customer_id",
+      "joining_table_name": "stripe.customer", "joining_table_key": "id", "field_name": "customer",
+      "confidence": 0.95,
+      "reasoning": "Paid-customer metrics go from an invoice to its customer to find the account.",
+      "evidence": { "match_rate": "fill in from scripts/match-rate.mjs", "rows_checked": "fill in", "checked_at": "fill in" } },
+    { "source_table_name": "stripe.subscription", "source_table_key": "customer_id",
+      "joining_table_name": "stripe.customer", "joining_table_key": "id", "field_name": "customer",
+      "confidence": 0.95,
+      "reasoning": "Seat metrics go from a subscription to its customer to find the account.",
+      "evidence": { "match_rate": "fill in from scripts/match-rate.mjs", "rows_checked": "fill in", "checked_at": "fill in" } },
+    { "source_table_name": "stripe.customer", "source_table_key": "lower(JSONExtractString(metadata, 'account_id'))",
+      "joining_table_name": "catalog_accounts", "joining_table_key": "account", "field_name": "account",
+      "confidence": 0.9,
+      "reasoning": "Lets any query drop internal accounts with customer.account.is_internal instead of copying the test-account list.",
+      "evidence": { "match_rate": "fill in from scripts/match-rate.mjs", "rows_checked": "fill in", "checked_at": "fill in" } }
+  ]
+}

@@ -1,0 +1,4 @@
+.env
+evals/work/
+evals/results-*.json
+node_modules/

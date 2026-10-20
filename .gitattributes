@@ -1,0 +1,2 @@
+# keep LF everywhere: PostHog stores definitions exactly as sent
+* text=auto eol=lf
